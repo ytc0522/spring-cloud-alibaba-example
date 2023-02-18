@@ -23,13 +23,22 @@ public class UserController {
     private UserService userService;
 
     @GetMapping("/{id}")
-    public UserEntity getById(@PathVariable("id") String id){
+    public UserEntity getById(@PathVariable("id") String id,boolean isTimeout){
         log.info("Enter App port:{}" , port);
+
+        /**
+         * 演示如果服务调用超时了，会怎么样？
+         * 结果：调用方在调用时，发现超时会对其他的节点进行重试，如果都超时，则报错
+         * ：java.net.SocketTimeoutException: Read timed out
+         */
+        if (isTimeout){
+            try {
+                Thread.sleep(10 * 1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            log.info("Exit sleep");
+        }
         return userService.getById(id);
     }
-
-
-
-
-
 }

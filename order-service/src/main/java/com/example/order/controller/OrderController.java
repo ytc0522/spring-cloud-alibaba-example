@@ -40,10 +40,10 @@ public class OrderController {
 
         UserOrderVO userOrderVO = new UserOrderVO();
         userOrderVO.setOrderId(orderId);
+        userOrderVO.setCreateTime(order.getCreateTime());
         userOrderVO.setUserName(userEntity.getUserName());
         userOrderVO.setUserId(userId);
         userOrderVO.setUserEmail(userEntity.getEmail());
-        userOrderVO.setCreateTime(order.getCreateTime());
 
         return userOrderVO;
     }

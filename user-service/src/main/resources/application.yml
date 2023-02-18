@@ -6,5 +6,5 @@ spring:
       discovery:
         server-addr: localhost:8848
 server:
-  port: 6666
+  port: 7002
 
