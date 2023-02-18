@@ -1,12 +1,14 @@
-package com.example.service.impl;
+package com.example.user.service.impl;
 
 import com.example.common.entities.UserEntity;
-import com.example.service.UserService;
+import com.example.user.service.UserService;
+import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Map;
 
+@Service
 public class UserServiceImpl implements UserService {
 
     private Map<String,UserEntity> userMap = new HashMap<>();

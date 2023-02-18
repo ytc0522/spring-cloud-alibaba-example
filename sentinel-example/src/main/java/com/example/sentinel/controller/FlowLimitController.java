@@ -13,7 +13,6 @@ public class FlowLimitController {
     final String RESOURCE_NAME = "RESOURCE_NAME";
 
 
-
     @SentinelResource(value = RESOURCE_NAME,blockHandler = "exceptionHandler")
     @GetMapping("/limit")
     public String anno() {

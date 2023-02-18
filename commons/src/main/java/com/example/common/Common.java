@@ -1,2 +1,5 @@
-package com.example.common;public class Common {
+package com.example.common;
+
+
+public class Common {
 }
