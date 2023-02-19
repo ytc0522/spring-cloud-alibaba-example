@@ -7,6 +7,7 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+    ## 网关配置
     gateway:
       routes:
         - id: user-service
@@ -21,3 +22,15 @@ spring:
         locator:
           enabled: true
       enabled: true
+## 限流组件Sentinel配置
+    sentinel:
+      eager: true
+      transport:
+        dashboard: 127.0.0.1:8999
+        port: 8719
+      scg:
+        fallback:
+          # 两种模式：一种是response返回文字提示信息，一种是redirect，重定向跳转，需要同时配置redirect(跳转的uri)
+          mode: response
+          response-status: 426
+          response-body: '{"code": 426,"message": "限流了，稍后重试！"}'
