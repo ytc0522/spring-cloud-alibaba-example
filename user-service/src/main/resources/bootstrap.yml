@@ -1,3 +1,4 @@
+
 spring:
   application:
     name: user-service
@@ -11,5 +12,5 @@ spring:
       discovery:
         server-addr: localhost:8848
 server:
-  port: 7002
+  port: 8000
 

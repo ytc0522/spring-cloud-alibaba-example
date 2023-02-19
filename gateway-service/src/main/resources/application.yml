@@ -1,0 +1,23 @@
+server:
+  port: 7999
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user/**
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+              - Path=/order/**
+      discovery:
+        locator:
+          enabled: true
+      enabled: true
