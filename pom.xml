@@ -11,7 +11,6 @@
     <modules>
         <module>sentinel-example</module>
         <module>commons</module>
-        <module>product-service</module>
         <module>user-service</module>
         <module>order-service</module>
         <module>gateway-service</module>
