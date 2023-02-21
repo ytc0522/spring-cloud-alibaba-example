@@ -19,40 +19,41 @@ com.alibaba.cloud.nacos.logging.NacosLoggingListener
 2. 很重要的两个自动配置类 NacosConfigBootstrapConfiguration和 NacosConfigAutoConfiguration，先分析NacosConfigAutoConfiguration
 ```java
 public class NacosConfigAutoConfiguration {
-    public NacosConfigAutoConfiguration() {
-    }
+   public NacosConfigAutoConfiguration() {
+   }
 
-    @Bean
-    public NacosConfigProperties nacosConfigProperties(ApplicationContext context) {
-        return context.getParent() != null && BeanFactoryUtils.beanNamesForTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class).length > 0 ? (NacosConfigProperties)BeanFactoryUtils.beanOfTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class) : new NacosConfigProperties();
-    }
+   @Bean
+   public NacosConfigProperties nacosConfigProperties(ApplicationContext context) {
+      return context.getParent() != null && BeanFactoryUtils.beanNamesForTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class).length > 0 ? (NacosConfigProperties) BeanFactoryUtils.beanOfTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class) : new NacosConfigProperties();
+   }
 
-    @Bean
-    public NacosRefreshProperties nacosRefreshProperties() {
-        return new NacosRefreshProperties();
-    }
+   @Bean
+   public NacosRefreshProperties nacosRefreshProperties() {
+      return new NacosRefreshProperties();
+   }
 
-    @Bean
-    public NacosRefreshHistory nacosRefreshHistory() {
-        return new NacosRefreshHistory();
-    }
+   @Bean
+   public NacosRefreshHistory nacosRefreshHistory() {
+      return new NacosRefreshHistory();
+   }
 
-    @Bean
-    public NacosConfigManager nacosConfigManager(NacosConfigProperties nacosConfigProperties) {
-        return new NacosConfigManager(nacosConfigProperties);
-    }
+   @Bean
+   public NacosConfigManager nacosConfigManager(NacosConfigProperties nacosConfigProperties) {
+      return new NacosConfigManager(nacosConfigProperties);
+   }
 
-    @Bean
-    public NacosContextRefresher nacosContextRefresher(NacosConfigManager nacosConfigManager, NacosRefreshHistory nacosRefreshHistory) {
-        return new NacosContextRefresher(nacosConfigManager, nacosRefreshHistory);
-    }
+   @Bean
+   public NacosContextRefresher nacosContextRefresher(NacosConfigManager nacosConfigManager, NacosRefreshHistory nacosRefreshHistory) {
+      return new NacosContextRefresher(nacosConfigManager, nacosRefreshHistory);
+   }
+} 
 ```
 
 2. 介绍下注入的几个Bean：
-   NacosContextRefresher：是一个监听器，实现了ApplicationListener接口，
-   NacosRefreshProperties：已弃用
-   NacosRefreshHistory：存放配置的历史数据
-   NacosConfigManager: 持有一个属性 ConfigService service，根据nacos的配置信息创建该service。
+   - NacosContextRefresher：是一个监听器，实现了ApplicationListener接口，
+   - NacosRefreshProperties：已弃用
+   - NacosRefreshHistory：存放配置的历史数据
+   - NacosConfigManager: 持有一个属性 ConfigService service，根据nacos的配置信息创建该service。
 ```java 
    public NacosConfigManager(NacosConfigProperties nacosConfigProperties) {
    this.nacosConfigProperties = nacosConfigProperties;
