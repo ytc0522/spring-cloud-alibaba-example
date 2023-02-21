@@ -9,13 +9,13 @@
         <outputRelativeToContentRoot value="true" />
         <module name="user-service" />
         <module name="order-service" />
-        <module name="sentinel-example" />
         <module name="commons" />
         <module name="gateway-service" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="product-service" target="8" />
+      <module name="sentinel-example" target="8" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
