@@ -707,6 +707,7 @@ public void listener(HttpServletRequest request, HttpServletResponse response)
         }
 ```
 4. Nacos长轮询是如何监听数据变更的？当有数据变更时，立即返回变更的数据。
+在LongPollingService的构造器中，注册了一个订阅者，监听LocalDataChangeEvent。
 ```java 
 public LongPollingService() {
         allSubs = new ConcurrentLinkedQueue<ClientLongPolling>();
@@ -738,13 +739,16 @@ public LongPollingService() {
             }
         });
     }
-    // DataChangeTask的run方法：
+    // DataChangeTask 的run方法：
     @Override
         public void run() {
             try {
                 ConfigCacheService.getContentBetaMd5(groupKey);
                 for (Iterator<ClientLongPolling> iter = allSubs.iterator(); iter.hasNext(); ) {
                     ClientLongPolling clientSub = iter.next();
+                    //clientMd5Map 是在长轮询接口内有客户端传入的参数Listening-Configs生成的。
+                    // 格式： user-service.properties+DEFAULT_GROUP+d65ea6d7-67a2-48ae-8b9e-00484b8ee664
+                    // 故这里的判断的意思就是判断有没有获取groupKey的长轮询请求，如果有的话，再做处理。
                     if (clientSub.clientMd5Map.containsKey(groupKey)) {
                         // If published tag is not in the beta list, then it skipped.
                         if (isBeta && !CollectionUtils.contains(betaIps, clientSub.ip)) {
@@ -763,7 +767,7 @@ public LongPollingService() {
                                         RequestUtil
                                                 .getRemoteIp((HttpServletRequest) clientSub.asyncContext.getRequest()),
                                         "polling", clientSub.clientMd5Map.size(), clientSub.probeRequestSize, groupKey);
-                        // 发送Response
+                        // 发送Response，groupKey格式是user-service.properties%02DEFAULT_GROUP%02d65ea6d7-67a2-48ae-8b9e-00484b8ee664%01
                         clientSub.sendResponse(Arrays.asList(groupKey));
                     }
                 }
@@ -771,5 +775,4 @@ public LongPollingService() {
                 LogUtil.DEFAULT_LOG.error("data change error: {}", ExceptionUtil.getStackTrace(t));
             }
         }
-
 ```
