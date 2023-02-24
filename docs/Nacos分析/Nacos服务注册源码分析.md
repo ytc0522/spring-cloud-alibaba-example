@@ -38,22 +38,177 @@
 ## 服务端核心源码
 ### 源码分析过程
 1. 因为客户端将数据发送给接口/nacos/v1/ns/instance，故，这里我们查看该接口,该接口在nacos-naming模块的InstanceController中。
-   ![img_9.png](img_9.png)
-2. ServiceManager类中一个属性serviceMap，Map(namespace, Map(group::serviceName, Service))
-   如果是第一次的话，新建一个空的服务放入注册表内并初始化。具体代码见putServiceAndInit方法。
+```java 
+    @CanDistro
+    @PostMapping
+    @Secured(parser = NamingResourceParser.class, action = ActionTypes.WRITE)
+    public String register(HttpServletRequest request) throws Exception {
+        
+        final String namespaceId = WebUtils
+                .optional(request, CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID);
+        final String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
+        NamingUtils.checkServiceNameFormat(serviceName);
+        
+        final Instance instance = parseInstance(request);
+        // 调用的是ServiceManager的registerInstance方法
+        serviceManager.registerInstance(namespaceId, serviceName, instance);
+        return "ok";
+    }
+    
+    // ServiceManager的注册方法。
+     public void registerInstance(String namespaceId, String serviceName, Instance instance) throws NacosException {
+     // 创建一个空的服务
+     createEmptyService(namespaceId, serviceName, instance.isEphemeral());
+     Service service = getService(namespaceId, serviceName);
+     if (service == null) {
+         throw new NacosException(NacosException.INVALID_PARAM,
+                 "service not found, namespace: " + namespaceId + ", service: " + serviceName);
+     }
+     // 添加实例
+     addInstance(namespaceId, serviceName, instance.isEphemeral(), instance);
+ }
+```
+- 先看下如何创建空服务的
+```java 
+// 创建一个空的服务
+    public void createEmptyService(String namespaceId, String serviceName, boolean local) throws NacosException {
+      createServiceIfAbsent(namespaceId, serviceName, local, null);
+   }
+   
+   // 实际上当服务不存在才会创建
+   public void createServiceIfAbsent(String namespaceId, String serviceName, boolean local, Cluster cluster)
+         throws NacosException {
+    // 根据服务名称和namespaceId获取服务
+     Service service = getService(namespaceId, serviceName);
+     if (service == null) {
+         
+         Loggers.SRV_LOG.info("creating empty service {}:{}", namespaceId, serviceName);
+         service = new Service();
+         service.setName(serviceName);
+         service.setNamespaceId(namespaceId);
+         service.setGroupName(NamingUtils.getGroupName(serviceName));
+         // now validate the service. if failed, exception will be thrown
+         service.setLastModifiedMillis(System.currentTimeMillis());
+         service.recalculateChecksum();
+         // 服务下面是有集群的
+         if (cluster != null) {
+             cluster.setService(service);
+             service.getClusterMap().put(cluster.getName(), cluster);
+         }
+         // 校验名称是否符合规则
+         service.validate();
+         // 添加服务并且初始化
+         putServiceAndInit(service);
+         if (!local) {
+             addOrReplaceService(service);
+         }
+     }
+ }
+    // 添加服务并且初始化
+     private void putServiceAndInit(Service service) throws NacosException {
+       // 添加服务，这里用到了双重检索，防止重复添加
+       // 放到了一个Map中，结构是Map(namespace, Map(group::serviceName, Service))
+        putService(service);
+        service = getService(service.getNamespaceId(), service.getName());
+        // 服务初始
+        service.init();
+        
+        // 这里就是需要将注册的服务信息同步给其他节点。
+        // 临时节点和持久节点都监听了一遍，后面详细介绍具体逻辑
+        consistencyService
+                .listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), true), service);
+        consistencyService
+                .listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), false), service);
+        Loggers.SRV_LOG.info("[NEW-SERVICE] {}", service.toJson());
+    }
+    
+    // 服务初始化
+     public void init() {
+     // 每隔5秒执行一次心跳检测任务
+     HealthCheckReactor.scheduleCheck(clientBeatCheckTask);
+     for (Map.Entry<String, Cluster> entry : clusterMap.entrySet()) {
+         entry.getValue().setService(this);
+         entry.getValue().init();
+     }
+   }
+   
+   // 心跳检测任务
+   @Override
+    public void run() {
+        try {
+            if (!getDistroMapper().responsible(service.getName())) {
+                return;
+            }
+            
+            if (!getSwitchDomain().isHealthCheckEnabled()) {
+                return;
+            }
+            
+            List<Instance> instances = service.allIPs(true);
+            
+            // first set health status of instances:
+            for (Instance instance : instances) {
+               // 15秒未联系到客户端，标记不健康
+                if (System.currentTimeMillis() - instance.getLastBeat() > instance.getInstanceHeartBeatTimeOut()) {
+                    if (!instance.isMarked()) {
+                        if (instance.isHealthy()) {
+                            instance.setHealthy(false);
+                            Loggers.EVT_LOG
+                                    .info("{POS} {IP-DISABLED} valid: {}:{}@{}@{}, region: {}, msg: client timeout after {}, last beat: {}",
+                                            instance.getIp(), instance.getPort(), instance.getClusterName(),
+                                            service.getName(), UtilsAndCommons.LOCALHOST_SITE,
+                                            instance.getInstanceHeartBeatTimeOut(), instance.getLastBeat());
+                            getPushService().serviceChanged(service);
+                            ApplicationUtils.publishEvent(new InstanceHeartbeatTimeoutEvent(this, instance));
+                        }
+                    }
+                }
+            }
+            
+            if (!getGlobalConfig().isExpireInstance()) {
+                return;
+            }
+            
+            // then remove obsolete instances:
+            for (Instance instance : instances) {
+                
+                if (instance.isMarked()) {
+                    continue;
+                }
+                // 30秒未联系到客户端，直接删除。
+                if (System.currentTimeMillis() - instance.getLastBeat() > instance.getIpDeleteTimeout()) {
+                    // delete instance
+                    Loggers.SRV_LOG.info("[AUTO-DELETE-IP] service: {}, ip: {}", service.getName(),
+                            JacksonUtils.toJson(instance));
+                    deleteIp(instance);
+                }
+            }
+            
+        } catch (Exception e) {
+            Loggers.SRV_LOG.warn("Exception while processing client beat time out.", e);
+        }
+    }
+```
+- 然后再看下添加实例这个方法
+```java 
+    public void addInstance(String namespaceId, String serviceName, boolean ephemeral, Instance... ips)
+        throws NacosException {
 
-![img_11.png](img_11.png)
+        String key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
+         // 先获取这个服务
+        Service service = getService(namespaceId, serviceName);
+    synchronized (service) {
+         // 拷贝旧的实例列表，添加新实例到列表中。、
+        List<Instance> instanceList = addIpAddresses(service, ephemeral, ips);
 
-putService方法：将服务存入Map中。
+        Instances instances = new Instances();
+        instances.setInstanceList(instanceList);
+         // 完成对实例状态更新后，则会用新列表直接覆盖旧实例列表
+        consistencyService.put(key, instances);
+        }
+    }
+```
 
-![img_10.png](img_10.png)
-
-3. 初始化操作逻辑在service.init()方法中，首先会开启一个定时任务，每隔5秒中去检查客户端的最近的心跳时间是否超过默认的超时时间15秒，如果超过了，
-   设置健康状态为false；如果超过了30秒就会将该实例删除。
-   ![img_12.png](img_12.png)
-4. 将服务的实例信息保存起来，并且同步给Nacos集群的其他节点。addIPAddress中，会拷贝旧的实例列表，添加新实例到列表中。
-   完成对实例状态更新后，则会用新列表直接覆盖旧实例列表。而在更新过程中，旧实例列表不受影响，用户依然可以读取。
-   ![img_13.png](img_13.png)
 
 #### 集群数据同步
 根据注册的字段ephemeral判断是否是临时客户端还是持久节客户端，不同的节点采用不同的数据同步方式。
