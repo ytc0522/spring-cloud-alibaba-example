@@ -37,8 +37,5 @@ buildNumber.properties
 !/.mvn/wrapper/maven-wrapper.jar
 
 # idea environment file
-.idea/*
-.idea/compiler.xml
-.idea/encodings.xml
-.idea/modules.xml
 *.iml
+.idea
