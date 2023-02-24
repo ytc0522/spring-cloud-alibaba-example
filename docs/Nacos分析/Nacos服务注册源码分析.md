@@ -1,8 +1,8 @@
 # Nacos 服务注册源码分析
-本次分析的Nacos客户端和服务端版本都是1.4.2，使用的是spring-cloud-starter-alibaba-nacos-discovery依赖。
 
-![img_8.png](img_8.png)
-
+## 版本介绍
+- Nacos客户端和服务端版本都是1.4.2。
+- spring-cloud-alibaba-starters版本2.2.6.RELEASE。
 
 ## 客户端核心源码
 ### 源码分析过程
