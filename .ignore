@@ -1,9 +1,9 @@
 .classpath
 .project
 .settings
-target
+target/
 .idea
 *.class
-logs/
+log/
 sql/
 .log
