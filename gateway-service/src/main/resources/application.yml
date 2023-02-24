@@ -7,6 +7,8 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+        # 表示注册到nacos上为持久化节点
+        ephemeral: false
     ## 网关配置
     gateway:
       routes:
