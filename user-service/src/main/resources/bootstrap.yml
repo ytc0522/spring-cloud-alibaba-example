@@ -1,0 +1,13 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: properties   #配置文件后缀名   dataId = application.name  +  file-extension
+        namespace: d65ea6d7-67a2-48ae-8b9e-00484b8ee664  #开发环境
+        group: DEFAULT_GROUP
+      discovery:
+        server-addr: localhost:8848
+server:
+  port: 8000
+
