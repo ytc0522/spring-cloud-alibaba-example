@@ -6,34 +6,195 @@
 
 ## 客户端核心源码
 ### 源码分析过程
-#### 找到自动配置类
-1. 首先查看spring-cloud-starter-alibaba-nacos-discovery依赖的自动装配文件spring.factories
+- 首先查看spring-cloud-starter-alibaba-nacos-discovery依赖的自动装配文件spring.factories
 ```xml
 <dependency>
     <groupId>com.alibaba.cloud</groupId>
     <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
 </dependency>
 ```
-![a](https://upload-images.jianshu.io/upload_images/27061397-2e117f3d3ab3ee26.png?imageMogr2/auto-orient/strip|imageView2/2/w/879/format/webp)
+```properties
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration,\
+  com.alibaba.cloud.nacos.ribbon.RibbonNacosAutoConfiguration,\
+  com.alibaba.cloud.nacos.endpoint.NacosDiscoveryEndpointAutoConfiguration,\
+  com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration,\
+  com.alibaba.cloud.nacos.discovery.NacosDiscoveryClientConfiguration,\
+  com.alibaba.cloud.nacos.discovery.reactive.NacosReactiveDiscoveryClientConfiguration,\
+  com.alibaba.cloud.nacos.discovery.configclient.NacosConfigServerAutoConfiguration,\
+  com.alibaba.cloud.nacos.NacosServiceAutoConfiguration
+org.springframework.cloud.bootstrap.BootstrapConfiguration=\
+  com.alibaba.cloud.nacos.discovery.configclient.NacosDiscoveryClientConfigServiceBootstrapConfiguration
+org.springframework.context.ApplicationListener=\
+  com.alibaba.cloud.nacos.discovery.logging.NacosLoggingListener
 
-2. 找到Nacos服务注册自动配置类和入口
-   ![img.png](img.png)
+```
 
-3. 查看NacosServiceRegistryAutoConfiguration类源码,在该类中注入了一个Bean：
+- 找到Nacos服务注册自动配置类和入口NacosServiceRegistryAutoConfiguration，在该类中注入了一个Bean：
    NacosAutoServiceRegistration
-   ![img_1.png](img_1.png)
-4. 该类继承了AbstractAutoServiceRegistration，实现了ApplicationListener的onApplicationEvent方法，在该方法中调用了bind方法。
-#### 注册的逻辑：
-   ![img_2.png](img_2.png)
-5. 一直追踪下去可以进入到com.alibaba.cloud.nacos.registry.NacosServiceRegistry.register
-   ![img_4.png](img_4.png)
-6. 在com.alibaba.nacos.client.naming.NacosNamingService.registerInstance方法中，判断是否是临时实例，如果是的话，每隔5秒定时发送心跳信息。
-   ![img_6.png](img_6.png)
-7. 在方法com.alibaba.nacos.client.naming.net.NamingProxy.registerService中执行具体注册的逻辑：发起POST请求将客户端数据发送给nacos服务端。
-   ![img_7.png](img_7.png)
-### 客户端注册流程图
+```java 
+	@Bean
+	@ConditionalOnBean(AutoServiceRegistrationProperties.class)
+	public NacosAutoServiceRegistration nacosAutoServiceRegistration(
+			NacosServiceRegistry registry,
+			AutoServiceRegistrationProperties autoServiceRegistrationProperties,
+			NacosRegistration registration) {
+		return new NacosAutoServiceRegistration(registry,
+				autoServiceRegistrationProperties, registration);
+	}
+```
+- 该类继承了 AbstractAutoServiceRegistration，实现了ApplicationListener的onApplicationEvent方法，在该方法中调用了bind方法。
+```java
+public class NacosAutoServiceRegistration
+        extends AbstractAutoServiceRegistration<Registration>{}
 
-![img_5.png](img_5.png)
+public abstract class AbstractAutoServiceRegistration<R extends Registration>
+        implements AutoServiceRegistration, ApplicationContextAware,
+        ApplicationListener<WebServerInitializedEvent> {
+
+   @Override
+   @SuppressWarnings("deprecation")
+   public void onApplicationEvent(WebServerInitializedEvent event) {
+      bind(event);
+   }
+
+   @Deprecated
+   public void bind(WebServerInitializedEvent event) {
+      ApplicationContext context = event.getApplicationContext();
+      if (context instanceof ConfigurableWebServerApplicationContext) {
+         if ("management".equals(((ConfigurableWebServerApplicationContext) context)
+                 .getServerNamespace())) {
+            return;
+         }
+      }
+      this.port.compareAndSet(0, event.getWebServer().getPort());
+      this.start();
+   }
+
+   /**
+    * 开始注册
+    */
+   public void start() {
+      if (!isEnabled()) {
+         if (logger.isDebugEnabled()) {
+            logger.debug("Discovery Lifecycle disabled. Not starting");
+         }
+         return;
+      }
+
+      // only initialize if nonSecurePort is greater than 0 and it isn't already running
+      // because of containerPortInitializer below
+      if (!this.running.get()) {
+         this.context.publishEvent(
+                 new InstancePreRegisteredEvent(this, getRegistration()));
+         
+         // 注册
+         register();
+         if (shouldRegisterManagement()) {
+            registerManagement();
+         }
+         this.context.publishEvent(
+                 new InstanceRegisteredEvent<>(this, getConfiguration()));
+         this.running.compareAndSet(false, true);
+      }
+
+   }
+
+   /**
+    * 注册本机客户端
+    */
+   protected void register() {
+      this.serviceRegistry.register(getRegistration());
+   }
+
+
+   @Override
+   public void register(Registration registration) {
+
+      if (StringUtils.isEmpty(registration.getServiceId())) {
+         log.warn("No service to register for nacos client...");
+         return;
+      }
+
+      NamingService namingService = namingService();
+      String serviceId = registration.getServiceId();
+      String group = nacosDiscoveryProperties.getGroup();
+
+      Instance instance = getNacosInstanceFromRegistration(registration);
+
+      try {
+          // NameService 注册该实例
+         namingService.registerInstance(serviceId, group, instance);
+         log.info("nacos registry, {} {} {}:{} register finished", group, serviceId,
+                 instance.getIp(), instance.getPort());
+      }
+      catch (Exception e) {
+         if (nacosDiscoveryProperties.isFailFast()) {
+            log.error("nacos registry, {} register failed...{},", serviceId,
+                    registration.toString(), e);
+            rethrowRuntimeException(e);
+         }
+         else {
+            log.warn("Failfast is false. {} register failed...{},", serviceId,
+                    registration.toString(), e);
+         }
+      }
+   }
+
+    // 注册该实例
+   @Override
+   public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
+      NamingUtils.checkInstanceIsLegal(instance);
+      String groupedServiceName = NamingUtils.getGroupedName(serviceName, groupName);
+      // 如果是临时节点的话，需要发送心跳
+      if (instance.isEphemeral()) {
+         BeatInfo beatInfo = beatReactor.buildBeatInfo(groupedServiceName, instance);
+         beatReactor.addBeatInfo(groupedServiceName, beatInfo);
+      }
+      serverProxy.registerService(groupedServiceName, groupName, instance);
+   }
+}
+    // 添加BeatInfo
+   public void addBeatInfo(String serviceName, BeatInfo beatInfo) {
+      NAMING_LOGGER.info("[BEAT] adding beat: {} to beat map.", beatInfo);
+      String key = buildKey(serviceName, beatInfo.getIp(), beatInfo.getPort());
+      BeatInfo existBeat = null;
+      //fix #1733
+      if ((existBeat = dom2Beat.remove(key)) != null) {
+         existBeat.setStopped(true);
+      }
+      dom2Beat.put(key, beatInfo);
+      // 定时发送心跳包给Nacos服务端
+      executorService.schedule(new BeatTask(beatInfo), beatInfo.getPeriod(), TimeUnit.MILLISECONDS);
+      MetricsMonitor.getDom2BeatSizeMonitor().set(dom2Beat.size());
+   }
+
+    // 发起注册请求
+   public void registerService(String serviceName, String groupName, Instance instance) throws NacosException {
+
+      NAMING_LOGGER.info("[REGISTER-SERVICE] {} registering service {} with instance: {}", namespaceId, serviceName,
+              instance);
+
+      final Map<String, String> params = new HashMap<String, String>(16);
+      params.put(CommonParams.NAMESPACE_ID, namespaceId);
+      params.put(CommonParams.SERVICE_NAME, serviceName);
+      params.put(CommonParams.GROUP_NAME, groupName);
+      params.put(CommonParams.CLUSTER_NAME, instance.getClusterName());
+      params.put("ip", instance.getIp());
+      params.put("port", String.valueOf(instance.getPort()));
+      params.put("weight", String.valueOf(instance.getWeight()));
+      params.put("enable", String.valueOf(instance.isEnabled()));
+      params.put("healthy", String.valueOf(instance.isHealthy()));
+      params.put("ephemeral", String.valueOf(instance.isEphemeral()));
+      params.put("metadata", JacksonUtils.toJson(instance.getMetadata()));
+
+      reqApi(UtilAndComs.nacosUrlInstance, params, HttpMethod.POST);
+   }
+```
+#### 总结
+- 通过实现ApplicationListener接口，在项目启动时执行注册的逻辑。
+- 如果该客户端是临时节点，还需要定时发送心跳包，每隔5秒发送一次。
+- 注册请求携带的数据包括该客户端的ip、port、weight、metadata等信息。
 
 ## 服务端核心源码
 ### 源码分析过程
