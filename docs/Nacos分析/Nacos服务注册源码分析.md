@@ -369,6 +369,12 @@ public abstract class AbstractAutoServiceRegistration<R extends Registration>
         }
     }
 ```
+### 总结
+- 通过Http接口接受来自客户端的注册请求，首先在 serviceMap（结构是Map(namespace, Map(group::serviceName, Service))）中查找该服务是否已经存在。
+- 如果不存在则创建一个新的服务，添加到该serviceMap中，然后初始化一个定时任务去定期检测该服务的心跳时间，15秒内未联系到该客户端，则标记不健康，30秒内未联系，直接删除。
+- 通过上面步骤就有了该服务，然后将该客户端实例添加到Map<String, Datum> dataMap中，dataMap的key是用来标记唯一的服务，value主要用来存放所有的实例信息。
+- 然后发布一个服务改变的事件到一个阻塞队列中（BlockingQueue<Pair<String, DataOperation>>）去，通过一直消费该事件完成集群节点之间的数据同步。
+- 服务注册时集群数据同步见文档 Nacos集群同步源码分析.md
 
 
 #### 集群数据同步
