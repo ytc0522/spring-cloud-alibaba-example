@@ -4,9 +4,14 @@
 - Nacos客户端和服务端版本都是1.4.2。
 - spring-cloud-alibaba-starters版本2.2.6.RELEASE。
 
-## 客户端核心源码
-### 源码分析过程
-- 首先查看spring-cloud-starter-alibaba-nacos-discovery依赖的自动装配文件spring.factories
+## 分析思路
+- Nacos客户端是怎么发起注册的
+- Nacos服务端在注册时做了什么
+- Nacos客户端和服务端数据是如何同步更新的
+
+
+### Nacos客户端是怎么注册的
+首先查看spring-cloud-starter-alibaba-nacos-discovery依赖的自动装配文件spring.factories
 ```xml
 <dependency>
     <groupId>com.alibaba.cloud</groupId>
@@ -43,7 +48,7 @@ org.springframework.context.ApplicationListener=\
 				autoServiceRegistrationProperties, registration);
 	}
 ```
-- 该类继承了 AbstractAutoServiceRegistration，实现了ApplicationListener的onApplicationEvent方法，在该方法中调用了bind方法。
+该类继承了 AbstractAutoServiceRegistration，实现了ApplicationListener的onApplicationEvent方法，在该方法中调用了bind方法。
 ```java
 public class NacosAutoServiceRegistration
         extends AbstractAutoServiceRegistration<Registration>{}
@@ -191,14 +196,10 @@ public abstract class AbstractAutoServiceRegistration<R extends Registration>
       reqApi(UtilAndComs.nacosUrlInstance, params, HttpMethod.POST);
    }
 ```
-#### 总结
-- 通过实现ApplicationListener接口，在项目启动时执行注册的逻辑。
-- 如果该客户端是临时节点，还需要定时发送心跳包，每隔5秒发送一次。
-- 注册请求携带的数据包括该客户端的ip、port、weight、metadata等信息。
 
-## 服务端核心源码
-### 源码分析过程
-1. 因为客户端将数据发送给接口/nacos/v1/ns/instance，故，这里我们查看该接口,该接口在nacos-naming模块的InstanceController中。
+
+### Nacos服务端在注册时做了什么
+因为客户端将数据发送给接口/nacos/v1/ns/instance，故，这里我们查看该接口,该接口在nacos-naming模块的InstanceController中。
 ```java 
     @CanDistro
     @PostMapping
@@ -369,9 +370,21 @@ public abstract class AbstractAutoServiceRegistration<R extends Registration>
         }
     }
 ```
+### Nacos客户端和服务端数据是如何同步更新的
+待补充...
+
+
 ### 总结
+#### Nacos客户端是怎么注册的？
+- 通过实现ApplicationListener接口，在项目启动时执行注册的逻辑。
+- 如果该客户端是临时节点，还需要定时发送心跳包，每隔5秒发送一次。
+- 注册请求携带的数据包括该客户端的ip、port、weight、metadata等信息。
+
+#### Nacos服务端在注册时做了什么
 - 通过Http接口接受来自客户端的注册请求，首先在 serviceMap（结构是Map(namespace, Map(group::serviceName, Service))）中查找该服务是否已经存在。
 - 如果不存在则创建一个新的服务，添加到该serviceMap中，然后初始化一个定时任务去定期检测该服务的心跳时间，15秒内未联系到该客户端，则标记不健康，30秒内未联系，直接删除。
 - 通过上面步骤就有了该服务，然后将该客户端实例添加到Map<String, Datum> dataMap中，dataMap的key是用来标记唯一的服务，value主要用来存放所有的实例信息。
 - 然后发布一个服务改变的事件到一个阻塞队列中（BlockingQueue<Pair<String, DataOperation>>）去，通过一直消费该事件完成集群节点之间的数据同步。
 - 服务注册时集群数据同步见文档 Nacos集群同步源码分析.md
+
+#### Nacos客户端和服务端数据是如何同步更新的
