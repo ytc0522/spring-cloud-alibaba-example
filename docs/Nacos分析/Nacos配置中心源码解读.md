@@ -1,6 +1,16 @@
-## Nacos 配置中心原理分析
-### 客户端源码分析流程
-1. 查看spring-cloud-starter-alibaba-nacos-config包下的META-INF目录下spring.factories
+# Nacos 配置中心源码分析
+
+## 版本介绍
+Nacos客户端和服务端版本都是1.4.2。
+spring-cloud-alibaba-starters版本2.2.6.RELEASE。
+
+## 分析思路
+- Nacos客户端主动获取配置
+- Nacos客户端和服务端如何保持同步更新的
+
+### Nacos客户端主动获取配置
+
+- 首先到找自动配置入口类，查看spring-cloud-starter-alibaba-nacos-config包下的META-INF目录下spring.factories
 ```properties
 org.springframework.cloud.bootstrap.BootstrapConfiguration=\
 com.alibaba.cloud.nacos.NacosConfigBootstrapConfiguration
@@ -14,110 +24,14 @@ com.alibaba.cloud.nacos.parser.NacosJsonPropertySourceLoader,\
 com.alibaba.cloud.nacos.parser.NacosXmlPropertySourceLoader
 org.springframework.context.ApplicationListener=\
 com.alibaba.cloud.nacos.logging.NacosLoggingListener
-
 ```
-2. 很重要的两个自动配置类 NacosConfigBootstrapConfiguration和 NacosConfigAutoConfiguration，先分析NacosConfigAutoConfiguration
-```java
-public class NacosConfigAutoConfiguration {
-   public NacosConfigAutoConfiguration() {
-   }
+很重要的两个自动配置类：
+- NacosConfigBootstrapConfiguration：主动获取Nacos服务端的配置
+- NacosConfigAutoConfiguration：
 
-   @Bean
-   public NacosConfigProperties nacosConfigProperties(ApplicationContext context) {
-      return context.getParent() != null && BeanFactoryUtils.beanNamesForTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class).length > 0 ? (NacosConfigProperties) BeanFactoryUtils.beanOfTypeIncludingAncestors(context.getParent(), NacosConfigProperties.class) : new NacosConfigProperties();
-   }
 
-   @Bean
-   public NacosRefreshProperties nacosRefreshProperties() {
-      return new NacosRefreshProperties();
-   }
-
-   @Bean
-   public NacosRefreshHistory nacosRefreshHistory() {
-      return new NacosRefreshHistory();
-   }
-
-   @Bean
-   public NacosConfigManager nacosConfigManager(NacosConfigProperties nacosConfigProperties) {
-      return new NacosConfigManager(nacosConfigProperties);
-   }
-
-   @Bean
-   public NacosContextRefresher nacosContextRefresher(NacosConfigManager nacosConfigManager, NacosRefreshHistory nacosRefreshHistory) {
-      return new NacosContextRefresher(nacosConfigManager, nacosRefreshHistory);
-   }
-} 
-```
-
-2. 介绍下注入的几个Bean：
-   - NacosContextRefresher：是一个监听器，实现了ApplicationListener接口，
-   - NacosRefreshProperties：已弃用
-   - NacosRefreshHistory：存放配置的历史数据
-   - NacosConfigManager: 持有一个属性 ConfigService service，根据nacos的配置信息创建该service。
-```java 
-   public NacosConfigManager(NacosConfigProperties nacosConfigProperties) {
-   this.nacosConfigProperties = nacosConfigProperties;
-   createConfigService(nacosConfigProperties);
-   }
-```
-
-3. NacosContextRefresher 这个类比较重要，看下这个类。
-```java 
-public void onApplicationEvent(ApplicationReadyEvent event) {
-        if (this.ready.compareAndSet(false, true)) {
-            this.registerNacosListenersForApplications();
-        }
-    }
-    // registerNacosListenersForApplications:
-    private void registerNacosListenersForApplications() {
-        if (this.isRefreshEnabled()) {
-            //  获取所有配置信息
-            Iterator var1 = NacosPropertySourceRepository.getAll().iterator();
-
-            while(var1.hasNext()) {
-                NacosPropertySource propertySource = (NacosPropertySource)var1.next();
-                if (propertySource.isRefreshable()) {
-                    String dataId = propertySource.getDataId();
-                    // 注册监听器
-                    this.registerNacosListener(propertySource.getGroup(), dataId);
-                }
-            }
-        }
-    }
-    // NACOS_PROPERTY_SOURCE_REPOSITORY是一个 ConcurrentHashMap<String, NacosPropertySource> 结构。
-    public static List<NacosPropertySource> getAll() {
-        return new ArrayList(NACOS_PROPERTY_SOURCE_REPOSITORY.values());
-    }
-    
-    // 注册监听器
-    private void registerNacosListener(final String groupKey, final String dataKey) {
-        String key = NacosPropertySourceRepository.getMapKey(dataKey, groupKey);
-        Listener listener = (Listener)this.listenerMap.computeIfAbsent(key, (lst) -> {
-            return new AbstractSharedListener() {
-                public void innerReceive(String dataId, String group, String configInfo) {
-                    // 刷新计数器加一
-                    NacosContextRefresher.refreshCountIncrement();
-                    // 将该条数据添加到历史备份中
-                    NacosContextRefresher.this.nacosRefreshHistory.addRefreshRecord(dataId, group, configInfo);
-                    // 发布刷新事件
-                    NacosContextRefresher.this.applicationContext.publishEvent(new RefreshEvent(this, (Object)null, "Refresh Nacos config"));
-                    if (NacosContextRefresher.log.isDebugEnabled()) {
-                        NacosContextRefresher.log.debug(String.format("Refresh Nacos config group=%s,dataId=%s,configInfo=%s", group, dataId, configInfo));
-                    }
-
-                }
-            };
-        });
-        try {
-            // 最后放到CopyOnWriteArrayList<ManagerListenerWrap>中
-            this.configService.addListener(dataKey, groupKey, listener);
-        } catch (NacosException var6) {
-            log.warn(String.format("register fail for nacos listener ,dataId=[%s],group=[%s]", dataKey, groupKey), var6);
-        }
-    }
-    
-```
-4. 然后再分析 NacosConfigBootstrapConfiguration 。
+看下如何加载配置的
+NacosConfigBootstrapConfiguration
 ```java
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "spring.cloud.nacos.config.enabled", matchIfMissing = true)
@@ -141,196 +55,171 @@ public class NacosConfigBootstrapConfiguration {
 			NacosConfigManager nacosConfigManager) {
 		return new NacosPropertySourceLocator(nacosConfigManager);
 	}
-
 }
 ```
 
-6. NacosPropertySourceLocator:用于获取加载存放在Nacos配置中心的配置信息，locate方法会在项目初始化时执行。
-```java 
-	@Override
-	public PropertySource<?> locate(Environment env) {
-		nacosConfigProperties.setEnvironment(env);
-		ConfigService configService = nacosConfigManager.getConfigService();
+NacosPropertySourceLocator 实现了Spring Cloud的 PropertySourceLocator，locate方法会在项目初始的时候加载，
+用于获取加载存放在Nacos配置中心的配置信息。
 
-		if (null == configService) {
-			log.warn("no instance of config service found, can't load config from nacos");
-			return null;
-		}
-		long timeout = nacosConfigProperties.getTimeout();
-		nacosPropertySourceBuilder = new NacosPropertySourceBuilder(configService,
-				timeout);
-		String name = nacosConfigProperties.getName();
+```java
+@Order(0)
+public class NacosPropertySourceLocator implements PropertySourceLocator {
 
-		String dataIdPrefix = nacosConfigProperties.getPrefix();
-		if (StringUtils.isEmpty(dataIdPrefix)) {
-			dataIdPrefix = name;
-		}
+   private static final Logger log = LoggerFactory
+           .getLogger(NacosPropertySourceLocator.class);
 
-		if (StringUtils.isEmpty(dataIdPrefix)) {
-			dataIdPrefix = env.getProperty("spring.application.name");
-		}
+   private static final String NACOS_PROPERTY_SOURCE_NAME = "NACOS";
 
-		CompositePropertySource composite = new CompositePropertySource(
-				NACOS_PROPERTY_SOURCE_NAME);
+   private static final String SEP1 = "-";
+
+   private static final String DOT = ".";
+
+   private NacosPropertySourceBuilder nacosPropertySourceBuilder;
+
+   private NacosConfigProperties nacosConfigProperties;
+
+   private NacosConfigManager nacosConfigManager;
+
+   /**
+    * recommend to use
+    * {@link NacosPropertySourceLocator#NacosPropertySourceLocator(com.alibaba.cloud.nacos.NacosConfigManager)}.
+    * @param nacosConfigProperties nacosConfigProperties
+    */
+   @Deprecated
+   public NacosPropertySourceLocator(NacosConfigProperties nacosConfigProperties) {
+      this.nacosConfigProperties = nacosConfigProperties;
+   }
+
+   public NacosPropertySourceLocator(NacosConfigManager nacosConfigManager) {
+      this.nacosConfigManager = nacosConfigManager;
+      this.nacosConfigProperties = nacosConfigManager.getNacosConfigProperties();
+   }
+
+   @Override
+   public PropertySource<?> locate(Environment env) {
+      nacosConfigProperties.setEnvironment(env);
+      ConfigService configService = nacosConfigManager.getConfigService();
+
+      if (null == configService) {
+         log.warn("no instance of config service found, can't load config from nacos");
+         return null;
+      }
+      long timeout = nacosConfigProperties.getTimeout();
+      nacosPropertySourceBuilder = new NacosPropertySourceBuilder(configService,
+              timeout);
+      String name = nacosConfigProperties.getName();
+
+      String dataIdPrefix = nacosConfigProperties.getPrefix();
+      if (StringUtils.isEmpty(dataIdPrefix)) {
+         dataIdPrefix = name;
+      }
+
+      if (StringUtils.isEmpty(dataIdPrefix)) {
+         dataIdPrefix = env.getProperty("spring.application.name");
+      }
+
+      CompositePropertySource composite = new CompositePropertySource(
+              NACOS_PROPERTY_SOURCE_NAME);
+      // 加载配置
+      // 加载这个参数指定的配置 spring.cloud.nacos.config.shared-configs[0]=xxx 
+      loadSharedConfiguration(composite);
+      //加载这个参数指定的配置 spring.cloud.nacos.config.extension-configs[0]=xxx 
+      loadExtConfiguration(composite);
+      // 加载 默认的nacos配置中心里的配置
+      loadApplicationConfiguration(composite, dataIdPrefix, nacosConfigProperties, env);
+      return composite;
+   }
+
+
+   /**
+    * load configuration of application.
+    */
+   private void loadApplicationConfiguration(
+           CompositePropertySource compositePropertySource, String dataIdPrefix,
+           NacosConfigProperties properties, Environment environment) {
+      String fileExtension = properties.getFileExtension();
+      String nacosGroup = properties.getGroup();
       
-        // 加载这个参数指定的配置 spring.cloud.nacos.config.shared-configs[0]=xxx 
-		loadSharedConfiguration(composite);
-		//加载这个参数指定的配置 spring.cloud.nacos.config.extension-configs[0]=xxx 
-		loadExtConfiguration(composite);
-		// 加载 默认的nacos配置中心里的配置
-		loadApplicationConfiguration(composite, dataIdPrefix, nacosConfigProperties, env);
-		return composite;
-	}
-	
-    /**
-	 * load configuration of application.
-	 */
-	private void loadApplicationConfiguration(
-			CompositePropertySource compositePropertySource, String dataIdPrefix,
-			NacosConfigProperties properties, Environment environment) {
-		String fileExtension = properties.getFileExtension();
-		String nacosGroup = properties.getGroup();
-		// load directly once by default，不使用文件后缀
-		loadNacosDataIfPresent(compositePropertySource, dataIdPrefix, nacosGroup,
-				fileExtension, true);
-		// load with suffix, which have a higher priority than the default，使用文件后缀
-		loadNacosDataIfPresent(compositePropertySource,
-				dataIdPrefix + DOT + fileExtension, nacosGroup, fileExtension, true);
-		// Loaded with profile, which have a higher priority than the suffix，通过环境又加载了一遍
-		for (String profile : environment.getActiveProfiles()) {
-			String dataId = dataIdPrefix + SEP1 + profile + DOT + fileExtension;
-			loadNacosDataIfPresent(compositePropertySource, dataId, nacosGroup,
-					fileExtension, true);
-		}
-	}
-	
-	private void loadNacosDataIfPresent(final CompositePropertySource composite,
-			final String dataId, final String group, String fileExtension,
-			boolean isRefreshable) {
-		if (null == dataId || dataId.trim().length() < 1) {
-			return;
-		}
-		if (null == group || group.trim().length() < 1) {
-			return;
-		}
-		NacosPropertySource propertySource = this.loadNacosPropertySource(dataId, group,
-				fileExtension, isRefreshable);
-		this.addFirstPropertySource(composite, propertySource, false);
-	}
-	
-	private NacosPropertySource loadNacosPropertySource(final String dataId,
-			final String group, String fileExtension, boolean isRefreshable) {
-		if (NacosContextRefresher.getRefreshCount() != 0) {
-			if (!isRefreshable) {
-				return NacosPropertySourceRepository.getNacosPropertySource(dataId,
-						group);
-			}
-		}
-		// 
-		return nacosPropertySourceBuilder.build(dataId, group, fileExtension,
-				isRefreshable);
-	}
-	
-	NacosPropertySource build(String dataId, String group, String fileExtension,
-			boolean isRefreshable) {
-			// 加载nacos配置
-		List<PropertySource<?>> propertySources = loadNacosData(dataId, group,
-				fileExtension);
-		NacosPropertySource nacosPropertySource = new NacosPropertySource(propertySources,
-				group, dataId, new Date(), isRefreshable);
-		NacosPropertySourceRepository.collectNacosPropertySource(nacosPropertySource);
-		return nacosPropertySource;
-	}
-	// 
-	private List<PropertySource<?>> loadNacosData(String dataId, String group,
-			String fileExtension) {
-		String data = null;
-		try {
-		    // 获取配置信息
-			data = configService.getConfig(dataId, group, timeout);
-			if (StringUtils.isEmpty(data)) {
-				log.warn(
-						"Ignore the empty nacos configuration and get it based on dataId[{}] & group[{}]",
-						dataId, group);
-				return Collections.emptyList();
-			}
-			if (log.isDebugEnabled()) {
-				log.debug(String.format(
-						"Loading nacos data, dataId: '%s', group: '%s', data: %s", dataId,
-						group, data));
-			}
-			return NacosDataParserHandler.getInstance().parseNacosData(dataId, data,
-					fileExtension);
-		}
-		catch (NacosException e) {
-			log.error("get data from Nacos error,dataId:{} ", dataId, e);
-		}
-		catch (Exception e) {
-			log.error("parse data from Nacos error,dataId:{},data:{}", dataId, data, e);
-		}
-		return Collections.emptyList();
-	}
-	
-	 @Override
-    public String getConfig(String dataId, String group, long timeoutMs) throws NacosException {
-        return getConfigInner(namespace, dataId, group, timeoutMs);
-    }
-    
- 
-    private String getConfigInner(String tenant, String dataId, String group, long timeoutMs) throws NacosException {
-        group = blank2defaultGroup(group);
-        ParamUtils.checkKeyParam(dataId, group);
-        ConfigResponse cr = new ConfigResponse();
-        
-        cr.setDataId(dataId);
-        cr.setTenant(tenant);
-        cr.setGroup(group);
-        
-        // 优先使用本地配置
-        String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
-        if (content != null) {
-            LOGGER.warn("[{}] [get-config] get failover ok, dataId={}, group={}, tenant={}, config={}", agent.getName(),
-                    dataId, group, tenant, ContentUtils.truncateContent(content));
-            cr.setContent(content);
-            String encryptedDataKey = LocalEncryptedDataKeyProcessor
-                    .getEncryptDataKeyFailover(agent.getName(), dataId, group, tenant);
-            cr.setEncryptedDataKey(encryptedDataKey);
-            configFilterChainManager.doFilter(null, cr);
-            content = cr.getContent();
-            return content;
-        }
-        
-        try {
-            // 本地配置找不到的话，到nacos服务端通过http接口查询配置 
-            ConfigResponse response = worker.getServerConfig(dataId, group, tenant, timeoutMs);
-            cr.setContent(response.getContent());
-            cr.setEncryptedDataKey(response.getEncryptedDataKey());
-            
-            configFilterChainManager.doFilter(null, cr);
-            content = cr.getContent();
-            
-            return content;
-        } catch (NacosException ioe) {
-            if (NacosException.NO_RIGHT == ioe.getErrCode()) {
-                throw ioe;
-            }
-            LOGGER.warn("[{}] [get-config] get from server error, dataId={}, group={}, tenant={}, msg={}",
-                    agent.getName(), dataId, group, tenant, ioe.toString());
-        }
-        
-        LOGGER.warn("[{}] [get-config] get snapshot ok, dataId={}, group={}, tenant={}, config={}", agent.getName(),
-                dataId, group, tenant, ContentUtils.truncateContent(content));
-        content = LocalConfigInfoProcessor.getSnapshot(agent.getName(), dataId, group, tenant);
-        cr.setContent(content);
-        String encryptedDataKey = LocalEncryptedDataKeyProcessor
-                .getEncryptDataKeyFailover(agent.getName(), dataId, group, tenant);
-        cr.setEncryptedDataKey(encryptedDataKey);
-        configFilterChainManager.doFilter(null, cr);
-        content = cr.getContent();
-        return content;
-    }
+      // 下面几个loadNacosDataIfPresent方法，是加载不同格式的数据
+      // load directly once by default 这个加载没有后缀的
+      loadNacosDataIfPresent(compositePropertySource, dataIdPrefix, nacosGroup,
+              fileExtension, true);
+      // load with suffix, which have a higher priority than the default
+      // 这个是加载带文件后缀的
+      loadNacosDataIfPresent(compositePropertySource,
+              dataIdPrefix + DOT + fileExtension, nacosGroup, fileExtension, true);
+      // Loaded with profile, which have a higher priority than the suffix
+      // 加载带环境的配置
+      for (String profile : environment.getActiveProfiles()) {
+         String dataId = dataIdPrefix + SEP1 + profile + DOT + fileExtension;
+         loadNacosDataIfPresent(compositePropertySource, dataId, nacosGroup,
+                 fileExtension, true);
+      }
+   }
+}
 ```
-7. 以上看的是 在Ncos客户端启动的时候加载nacos配置中心里的配置。下面看下Nacos客户端是如何感知Nacos服务端配置的变化的。首先看NacosConfigService构造器
+加载配置最终会调用NacosConfigService
+```java
+public class NacosConfigService implements ConfigService {
+    
+   private String getConfigInner(String tenant, String dataId, String group, long timeoutMs) throws NacosException {
+      group = blank2defaultGroup(group);
+      ParamUtils.checkKeyParam(dataId, group);
+      ConfigResponse cr = new ConfigResponse();
+
+      cr.setDataId(dataId);
+      cr.setTenant(tenant);
+      cr.setGroup(group);
+
+      // 优先使用本地配置
+      String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
+      if (content != null) {
+         LOGGER.warn("[{}] [get-config] get failover ok, dataId={}, group={}, tenant={}, config={}", agent.getName(),
+                 dataId, group, tenant, ContentUtils.truncateContent(content));
+         cr.setContent(content);
+         String encryptedDataKey = LocalEncryptedDataKeyProcessor
+                 .getEncryptDataKeyFailover(agent.getName(), dataId, group, tenant);
+         cr.setEncryptedDataKey(encryptedDataKey);
+         configFilterChainManager.doFilter(null, cr);
+         content = cr.getContent();
+         return content;
+      }
+
+      try {
+          // 这里是到Nacos服务端获取指定的配置文件，代码就不看了
+         ConfigResponse response = worker.getServerConfig(dataId, group, tenant, timeoutMs);
+         cr.setContent(response.getContent());
+         cr.setEncryptedDataKey(response.getEncryptedDataKey());
+
+         configFilterChainManager.doFilter(null, cr);
+         content = cr.getContent();
+
+         return content;
+      } catch (NacosException ioe) {
+         if (NacosException.NO_RIGHT == ioe.getErrCode()) {
+            throw ioe;
+         }
+         LOGGER.warn("[{}] [get-config] get from server error, dataId={}, group={}, tenant={}, msg={}",
+                 agent.getName(), dataId, group, tenant, ioe.toString());
+      }
+
+      LOGGER.warn("[{}] [get-config] get snapshot ok, dataId={}, group={}, tenant={}, config={}", agent.getName(),
+              dataId, group, tenant, ContentUtils.truncateContent(content));
+      content = LocalConfigInfoProcessor.getSnapshot(agent.getName(), dataId, group, tenant);
+      cr.setContent(content);
+      String encryptedDataKey = LocalEncryptedDataKeyProcessor
+              .getEncryptDataKeyFailover(agent.getName(), dataId, group, tenant);
+      cr.setEncryptedDataKey(encryptedDataKey);
+      configFilterChainManager.doFilter(null, cr);
+      content = cr.getContent();
+      return content;
+   }
+}
+```
+
+### Nacos客户端和服务端如何保持同步更新的
+
+首先看NacosConfigService构造器
 ```java 
 public NacosConfigService(Properties properties) throws NacosException {
         ValidatorUtils.checkInitParam(properties);
@@ -485,7 +374,7 @@ public NacosConfigService(Properties properties) throws NacosException {
         }
     }
 ```
-8. 检查nacos服务端配置是否更新代码比较重要,追踪checkUpdateDataIds这个方法，后面调用了checkUpdateConfigStr这个方法。
+检查nacos服务端配置是否更新代码比较重要,追踪checkUpdateDataIds这个方法，后面调用了checkUpdateConfigStr这个方法。
 ```java 
 List<String> checkUpdateConfigStr(String probeUpdateString, boolean isInitializingCacheList) throws Exception {
 
@@ -530,9 +419,8 @@ List<String> checkUpdateConfigStr(String probeUpdateString, boolean isInitializi
         return Collections.emptyList();
     }
 ```
-9. 
-### 服务端源码分析流程
-1. 先看长轮询接口/v1/cs/configs/listener的实现
+
+先看长轮询接口/v1/cs/configs/listener的实现
 ```java 
     /**
  * The client listens for configuration changes.
@@ -604,7 +492,7 @@ public void listener(HttpServletRequest request, HttpServletResponse response)
         return HttpServletResponse.SC_OK + "";
     }
 ```
-2. 长轮询真正的实现
+长轮询真正的实现
 ```java 
  /**
      * Add LongPollingClient.
@@ -657,7 +545,7 @@ public void listener(HttpServletRequest request, HttpServletResponse response)
                 new ClientLongPolling(asyncContext, clientMd5Map, ip, probeRequestSize, timeout, appName, tag));
     }
 ```
-3. ClientLongPolling 的run方法：
+ClientLongPolling 的run方法：
 ```java 
 @Override
         public void run() {
@@ -707,7 +595,7 @@ public void listener(HttpServletRequest request, HttpServletResponse response)
             allSubs.add(this);
         }
 ```
-4. Nacos长轮询是如何监听数据变更的？当有数据变更时，立即返回变更的数据。
+Nacos长轮询是如何监听数据变更的？当有数据变更时，立即返回变更的数据。
 在LongPollingService的构造器中，注册了一个订阅者，监听LocalDataChangeEvent。
 ```java 
 public LongPollingService() {
@@ -777,3 +665,12 @@ public LongPollingService() {
             }
         }
 ```
+##总结
+### 客户端侧
+- 当Nacos客户端启动时，会主动到Nacos服务端拉取配置信息并写入到本地缓存。以后需要配置时，先从本地缓存中查找，没有的话，再到服务端查找。
+- 为了让客户端和服务端配置保持同步，客户端会类似一直开启一个超时时间为30s的长轮询连接，当服务端在期间有数据返回，该连接会立刻响应，否则请求一直挂起。
+- 长轮询接口返回有数据变更时，客户端会再到服务端获取完整的配置信息。
+
+### 服务端侧
+- 通过servlet3实现长轮询接口，将请求数据放入到一个队列中，当监听到数据变更，立即返回数据，否则请求线程会一直挂起。
+- 提供一个可以获取配置信息的普通接口。
