@@ -5,9 +5,8 @@
 - spring-cloud-alibaba-starters版本2.2.6.RELEASE。
 
 ## 分析思路
-- Nacos客户端是怎么发起注册的
+- Nacos客户端是怎么注册的
 - Nacos服务端在注册时做了什么
-- Nacos客户端和服务端数据是如何同步更新的
 
 
 ### Nacos客户端是怎么注册的
@@ -370,8 +369,6 @@ public abstract class AbstractAutoServiceRegistration<R extends Registration>
         }
     }
 ```
-### Nacos客户端和服务端数据是如何同步更新的
-待补充...
 
 
 ### 总结
@@ -386,5 +383,3 @@ public abstract class AbstractAutoServiceRegistration<R extends Registration>
 - 通过上面步骤就有了该服务，然后将该客户端实例添加到Map<String, Datum> dataMap中，dataMap的key是用来标记唯一的服务，value主要用来存放所有的实例信息。
 - 然后发布一个服务改变的事件到一个阻塞队列中（BlockingQueue<Pair<String, DataOperation>>）去，通过一直消费该事件完成集群节点之间的数据同步。
 - 服务注册时集群数据同步见文档 Nacos集群同步源码分析.md
-
-#### Nacos客户端和服务端数据是如何同步更新的
