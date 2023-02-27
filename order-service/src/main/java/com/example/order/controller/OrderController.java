@@ -5,6 +5,10 @@ import com.example.common.entities.UserEntity;
 import com.example.order.service.OrderService;
 import com.example.order.service.UserService;
 import com.example.order.vo.UserOrderVO;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +18,8 @@ import javax.annotation.Resource;
 import javax.management.remote.rmi._RMIConnection_Stub;
 import java.util.List;
 
+@Slf4j
+@RefreshScope
 @RestController
 @RequestMapping("/order")
 public class OrderController {
@@ -24,13 +30,26 @@ public class OrderController {
     @Resource
     private UserService userService;
 
+    @Value("${order.count}")
+    private Integer orderCount;
+
+    @Resource
+    private ConfigurableApplicationContext applicationContext;
+
+    @GetMapping("/count")
+    public String count() {
+        log.info("orderCount:{}", orderCount);
+        return String.valueOf(orderCount);
+    }
+
     /**
      * 分别查询后聚合在一起
+     *
      * @param orderId
      * @return
      */
     @GetMapping("/{id}")
-    public UserOrderVO getById(@PathVariable("id") String orderId){
+    public UserOrderVO getById(@PathVariable("id") String orderId) {
         OrderEntity order = orderService.getById(orderId);
         if (order == null) {
             return null;
