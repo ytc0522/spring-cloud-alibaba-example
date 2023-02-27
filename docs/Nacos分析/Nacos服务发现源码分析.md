@@ -3,7 +3,12 @@
 - Nacos客户端和服务端版本都是1.4.2。
 - spring-cloud-alibaba-starters版本2.2.6.RELEASE。
 
-## 源码分析
+
+## 分析思路
+- Nacos客户端主动获取服务列表
+- Nacos服务端主动推送服务列表
+
+
 ### Nacos客户端主动获取服务列表
 spring-cloud-starter-alibaba-nacos-discovery包中是使用Ribbon作为负载均衡的，所以需要从Nacos和Ribbon整合开始看起。
 首先Nacos Client 发起服务调用请求后，后面是通过NacosServerList来获取服务提供方信息。
@@ -178,7 +183,7 @@ UpdateTask 的 run 方法：
   }
 ```
 
-### Nacos服务端主动推送服务列表数据
+### Nacos服务端主动推送服务列表
 在HostReactor类的构造方法中初始化了一个PushReceiver，主要用来完成开启一个UDP连接到服务端，好让服务端实时推送数据。
 ```java 
     public HostReactor(NamingProxy serverProxy, BeatReactor beatReactor, String cacheDir, boolean loadCacheAtStart,
