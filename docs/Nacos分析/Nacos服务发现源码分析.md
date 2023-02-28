@@ -443,6 +443,8 @@ public class PushService implements ApplicationContextAware, ApplicationListener
 
 #### 总结
 - Nacos 服务发现的流程是：先从本地缓存中找，找不到再查询Nacos服务端并更新到本地缓存。
-- 为了让Nacos客户端本地缓存和nacos服务端的服务列表保持同步，采用了两种方式：一种是客户端定时去服务端拉取，一种是nacos服务端主动推送给客户端更新的数据。
+- 为了让Nacos客户端本地缓存和nacos服务端的服务列表保持同步，采用了两种方式：
+  - 一种是客户端定时去服务端拉取
+  - 一种是nacos服务端通过监听ServiceChangeEvent事件UDP连接主动推送给客户端更新的数据。
 
 
