@@ -340,7 +340,7 @@ public class RaftCore implements Closeable {
         }
         // 将Term写入磁盘
         raftStore.updateTerm(local.term.get());
-        // 发布事件改变事件
+        // 发布改变事件,最终也会调用Service.onChange方法完成服务的更新。
         NotifyCenter.publishEvent(ValueChangeEvent.builder().key(datum.key).action(DataOperation.CHANGE).build());
         Loggers.RAFT.info("data added/updated, key={}, term={}", datum.key, local.term);
     }
@@ -348,6 +348,7 @@ public class RaftCore implements Closeable {
 ```
 
 ## 总结
+### 服务注册数据
 #### 临时服务的数据同步
 - 服务注册时，使用的是DistroProtocol来实现集群之间数据同步的
 - 通过添加一个同步数据的任务到阻塞队列中，不断获取任务，发起一个Http Put请求将本机注册的数据同步给其他节点。
@@ -356,4 +357,7 @@ public class RaftCore implements Closeable {
 #### 持久化服务的数据同步
 - 服务注册时，使用的时RaftCore来实现集群之间数据同步的。
 - 集群中的Leader首先将更新的数据、增加任期、任期写入磁盘，然后给所有节点发起提交请求，其他节点同步更新。
+
+### 配置数据
+- 当Nacos客户端发布配置时，服务端收到请求后会先持久化配置，然后异步广播给其他集群节点，其他节点收到通知后， 到存储中心获取配置并更新本地缓存。
 
