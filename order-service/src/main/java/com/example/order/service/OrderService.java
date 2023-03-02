@@ -12,7 +12,7 @@ public interface OrderService {
 
     public OrderEntity getById(String orderId);
 
-
-
+    // 模拟下单
+    void mockOrder(String orderId);
 
 }

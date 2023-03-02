@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8010
 spring:
   application:
     name: order-service
@@ -7,3 +7,19 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+        enabled: false
+    # 配置MQ
+    stream:
+      rocketmq:
+        binder:
+          name-server: 127.0.0.1:9876
+      bindings:
+        output:
+          content-type: application/json
+          destination: order-topic
+
+
+
+# 自定义配置
+order:
+  count: 1

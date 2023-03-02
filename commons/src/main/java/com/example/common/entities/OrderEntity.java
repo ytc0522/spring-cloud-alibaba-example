@@ -13,5 +13,7 @@ public class OrderEntity {
 
     private Date createTime;
 
+    private Integer status;
+
 
 }

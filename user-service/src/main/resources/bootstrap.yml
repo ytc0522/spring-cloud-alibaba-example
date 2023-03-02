@@ -1,13 +1,31 @@
 spring:
   cloud:
+    stream:
+      rocketmq:
+        # RocketMQ Binder 配置项，对应 RocketMQBinderConfigurationProperties 类
+        binder:
+          name-server: 127.0.0.1:9876 # RocketMQ Namesrv 地址
+      # Binding 配置项，对应 BindingProperties Ma
+      bindings:
+        input:
+          content-type: application/json
+          destination: order-topic
+          group: USER_GROUP
+
     nacos:
       config:
         server-addr: 127.0.0.1:8848
         file-extension: properties   #配置文件后缀名   dataId = application.name  +  file-extension
         namespace: d65ea6d7-67a2-48ae-8b9e-00484b8ee664  #开发环境
         group: DEFAULT_GROUP
+        enabled: false
       discovery:
         server-addr: localhost:8848
+        enabled: false
 server:
   port: 8000
 
+
+system:
+  user:
+    city: 北京

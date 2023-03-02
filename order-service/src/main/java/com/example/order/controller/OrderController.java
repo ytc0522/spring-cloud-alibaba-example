@@ -31,7 +31,7 @@ public class OrderController {
     private UserService userService;
 
     @Value("${order.count}")
-    private Integer orderCount;
+    private String orderCount;
 
     @Resource
     private ConfigurableApplicationContext applicationContext;
@@ -65,6 +65,17 @@ public class OrderController {
         userOrderVO.setUserEmail(userEntity.getEmail());
 
         return userOrderVO;
+    }
+
+    /**
+     * 模拟下单
+     * @param orderId
+     * @return
+     */
+    @GetMapping("/mockOrder/{orderId}")
+    public String mockOrder(@PathVariable("orderId") String orderId){
+        orderService.mockOrder(orderId);
+        return "SUCCESS";
     }
 
 
