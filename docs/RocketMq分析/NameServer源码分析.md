@@ -1,8 +1,9 @@
 # NameServer 源码分析
 
-## 版本4.4.0
+## 版本
+4.4.0
 
-## 功能
+## 功能介绍
 相当于Broker的注册表或注册中心。
 
 
@@ -528,7 +529,6 @@ public class RouteInfoManager {
 }
 ```
 
-## 发现Broker时做了什么？
 
 
 
