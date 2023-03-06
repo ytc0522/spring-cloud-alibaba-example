@@ -11,7 +11,6 @@
 - 启动时做了什么？
 - 注册Broker时做了什么？
 - 什么时候会移除Broker？
-- 发现Broker时做了什么？
 
 
 
@@ -528,6 +527,17 @@ public class RouteInfoManager {
     }
 }
 ```
+
+## 总结
+- 启动时做了什么？
+  - 启动Netty、注册请求处理器、定时扫描失活的Broker、监听配置文件等。
+- 注册Broker时做了什么？
+  - 通过Netty处理注册请求，将注册的信息保存到几个Map中，保存的信息包括QueueData、BrokerData、BrokerLiveInfo等。
+- 什么时候会移除Broker？
+  - 通过定时任务定时删除失联时间超过2分钟的Broker。
+
+
+
 
 
 
